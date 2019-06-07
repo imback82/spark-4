@@ -212,7 +212,11 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
       sparkProperties.get(DYN_ALLOCATION_ENABLED.key).exists("true".equalsIgnoreCase)
 
     // Try to set main class from JAR if no --class argument is given
-    if (mainClass == null && !isPython && !isR && primaryResource != null) {
+    if (mainClass == null
+        && !isPython
+        && !isR
+        && !sparkProperties.contains("spark.lang")
+        && primaryResource != null) {
       val uri = new URI(primaryResource)
       val uriScheme = uri.getScheme()
 
@@ -269,7 +273,9 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
     if (primaryResource == null) {
       error("Must specify a primary resource (JAR or Python or R file)")
     }
-    if (mainClass == null && SparkSubmit.isUserJar(primaryResource)) {
+    if (mainClass == null
+        && !sparkProperties.contains("spark.lang")
+        && SparkSubmit.isUserJar(primaryResource)) {
       error("No main class set in JAR; please specify one with --class")
     }
     if (driverMemory != null

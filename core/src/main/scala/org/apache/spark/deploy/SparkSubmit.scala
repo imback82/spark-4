@@ -317,7 +317,6 @@ private[spark] class SparkSubmit extends Logging {
     val isKubernetesClient = clusterManager == KUBERNETES && deployMode == CLIENT
     val isKubernetesClusterModeDriver = isKubernetesClient &&
       sparkConf.getBoolean("spark.kubernetes.submitInDriver", false)
-    val isMesosClient = clusterManager == MESOS && deployMode == CLIENT
 
     if (!isMesosCluster && !isStandAloneCluster) {
       // Resolve maven dependencies if there are any and add classpath to jars. Add them to py-files
@@ -538,6 +537,13 @@ private[spark] class SparkSubmit extends Logging {
       args.files = mergeFileLists(args.files, args.primaryResource)
     }
 
+    val isDotnet = args.sparkProperties.get("spark.lang").map(_ == "dotnet").getOrElse(false)
+    if (isDotnet) {
+      args.mainClass = "org.apache.spark.deploy.DotnetRunner"
+      args.childArgs = ArrayBuffer(localPrimaryResource) ++ args.childArgs
+      args.files = mergeFileLists(args.files, args.primaryResource)
+    }
+
     // Special flag to avoid deprecation warnings at the client
     sys.props("SPARK_SUBMIT") = "true"
 
@@ -614,11 +620,13 @@ private[spark] class SparkSubmit extends Logging {
       OptionAssigner(localJars, ALL_CLUSTER_MGRS, CLIENT, confKey = "spark.repl.local.jars")
     )
 
+    val isLangSet = args.sparkProperties.contains("spark.lang")
+
     // In client mode, launch the application main class directly
     // In addition, add the main application jar and any added jars (if any) to the classpath
     if (deployMode == CLIENT) {
       childMainClass = args.mainClass
-      if (localPrimaryResource != null && isUserJar(localPrimaryResource)) {
+      if (!isLangSet && localPrimaryResource != null && isUserJar(localPrimaryResource)) {
         childClasspath += localPrimaryResource
       }
       if (localJars != null) { childClasspath ++= localJars.split(",") }
@@ -629,7 +637,7 @@ private[spark] class SparkSubmit extends Logging {
     // to local by configuring "spark.yarn.dist.forceDownloadSchemes", otherwise it will not be
     // added to the classpath of YARN client.
     if (isYarnCluster) {
-      if (isUserJar(args.primaryResource)) {
+      if (!isLangSet && isUserJar(args.primaryResource)) {
         childClasspath += args.primaryResource
       }
       if (args.jars != null) { childClasspath ++= args.jars.split(",") }
@@ -663,7 +671,7 @@ private[spark] class SparkSubmit extends Logging {
     // Add the application jar automatically so the user doesn't have to call sc.addJar
     // For YARN cluster mode, the jar is already distributed on each node as "app.jar"
     // For python and R files, the primary resource is already distributed as a regular file
-    if (!isYarnCluster && !args.isPython && !args.isR) {
+    if (!isYarnCluster && !args.isPython && !args.isR && !isLangSet) {
       var jars = sparkConf.get(JARS)
       if (isUserJar(args.primaryResource)) {
         jars = jars ++ Seq(args.primaryResource)
