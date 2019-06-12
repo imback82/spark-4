@@ -21,13 +21,12 @@ import java.io._
 import java.nio.file.{Files, FileSystems}
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermission._
-import java.util.{Timer, TimerTask}
 
 import scala.collection.JavaConverters._
 import scala.collection.Set
 
-import org.apache.commons.compress.archivers.zip.{ZipArchiveEntry, ZipArchiveOutputStream, ZipFile}
-import org.apache.commons.io.{FileUtils, IOUtils}
+import org.apache.commons.compress.archivers.zip.ZipFile
+import org.apache.commons.io.IOUtils
 
 import org.apache.spark.internal.Logging
 
@@ -48,49 +47,6 @@ object Utils extends Logging {
 
   val supportPosix: Boolean =
     FileSystems.getDefault.supportedFileAttributeViews().contains("posix")
-
-  /**
-   * Compress all files under given directory into one zip file and drop it to the target directory
-   *
-   * @param sourceDir source directory to zip
-   * @param targetZipFile target zip file
-   */
-  def zip(sourceDir: File, targetZipFile: File): Unit = {
-    var fos: FileOutputStream = null
-    var zos: ZipArchiveOutputStream = null
-    try {
-      fos = new FileOutputStream(targetZipFile)
-      zos = new ZipArchiveOutputStream(fos)
-
-      val sourcePath = sourceDir.toPath
-      FileUtils.listFiles(sourceDir, null, true).asScala.foreach { file =>
-        var in: FileInputStream = null
-        try {
-          val path = file.toPath
-          val entry = new ZipArchiveEntry(sourcePath.relativize(path).toString)
-          if (supportPosix) {
-            entry.setUnixMode(
-              permissionsToMode(Files.getPosixFilePermissions(path).asScala)
-                | (if (entry.getName.endsWith(".exe")) 0x1ED else 0x1A4))
-          } else if (entry.getName.endsWith(".exe")) {
-            entry.setUnixMode(0x1ED) // 755
-          } else {
-            entry.setUnixMode(0x1A4) // 644
-          }
-          zos.putArchiveEntry(entry)
-
-          in = new FileInputStream(file)
-          IOUtils.copy(in, zos)
-          zos.closeArchiveEntry()
-        } finally {
-          IOUtils.closeQuietly(in)
-        }
-      }
-    } finally {
-      IOUtils.closeQuietly(zos)
-      IOUtils.closeQuietly(fos)
-    }
-  }
 
   /**
    * Unzip a file to the given directory
@@ -139,44 +95,6 @@ object Utils extends Logging {
   }
 
   /**
-   * Exits the JVM, trying to do it nicely, otherwise doing it nastily.
-   *
-   * @param status  the exit status, zero for OK, non-zero for error
-   * @param maxDelayMillis  the maximum delay in milliseconds
-   */
-  def exit(status: Int, maxDelayMillis: Long) {
-    try {
-      logInfo(s"Utils.exit() with status: $status, maxDelayMillis: $maxDelayMillis")
-
-      // setup a timer, so if nice exit fails, the nasty exit happens
-      val timer = new Timer()
-      timer.schedule(new TimerTask() {
-
-        override def run() {
-          Runtime.getRuntime.halt(status)
-        }
-      }, maxDelayMillis)
-      // try to exit nicely
-      System.exit(status);
-    } catch {
-      // exit nastily if we have a problem
-      case _: Throwable => Runtime.getRuntime.halt(status)
-    } finally {
-      // should never get here
-      Runtime.getRuntime.halt(status)
-    }
-  }
-
-  /**
-   * Exits the JVM, trying to do it nicely, wait 1 second
-   *
-   * @param status  the exit status, zero for OK, non-zero for error
-   */
-  def exit(status: Int): Unit = {
-    exit(status, 1000)
-  }
-
-  /**
    * Normalize the Spark version by taking the first three numbers.
    * For example:
    * x.y.z => x.y.z
@@ -199,22 +117,6 @@ object Utils extends Logging {
           }
       })
       .mkString(".")
-  }
-
-  private[spark] def listZipFileEntries(file: File): Array[String] = {
-    var zipFile: ZipFile = null
-    try {
-      zipFile = new ZipFile(file)
-      zipFile.getEntries.asScala.map(_.getName).toArray
-    } finally {
-      ZipFile.closeQuietly(zipFile)
-    }
-  }
-
-  private[this] def permissionsToMode(permissions: Set[PosixFilePermission]): Int = {
-    posixFilePermissions.foldLeft(0) { (mode, perm) =>
-      (mode << 1) | (if (permissions.contains(perm)) 1 else 0)
-    }
   }
 
   private[this] def modeToPermissions(mode: Int): Set[PosixFilePermission] = {

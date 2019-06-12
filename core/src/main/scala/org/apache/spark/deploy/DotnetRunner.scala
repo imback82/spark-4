@@ -32,14 +32,13 @@ import org.apache.commons.io.FilenameUtils
 import org.apache.hadoop.fs.Path
 import org.apache.spark
 
-import org.apache.spark.{SecurityManager, SparkConf, SparkUserAppException}
+import org.apache.spark.{SecurityManager, SparkConf, SparkException, SparkUserAppException}
 import org.apache.spark.api.dotnet.DotnetBackend
 import org.apache.spark.internal.Logging
 import org.apache.spark.util.{RedirectThread, Utils}
 import org.apache.spark.util.dotnet.{Utils => DotnetUtils}
 
 /**
- *
  * DotnetRunner class used to launch Spark .NET applications using spark-submit.
  * It executes .NET application as a subprocess and then has it connect back to
  * the JVM to access system properties etc.
@@ -126,8 +125,8 @@ object DotnetRunner extends Logging {
 
           for ((key, value) <- Utils.getSystemProperties if key.startsWith("spark.")) {
             env.put(key, value)
-            logInfo(s"Adding key=$key and value=$value to environment")
           }
+
           builder.redirectErrorStream(true) // Ugly but needed for stdout and stderr to synchronize
           val process = builder.start()
 
@@ -138,7 +137,7 @@ object DotnetRunner extends Logging {
           new RedirectThread(process.getErrorStream, System.out, "redirect .NET stderr").start()
 
           returnCode = process.waitFor()
-          closeBackend(dotnetBackend)
+          dotnetBackend.close()
         } catch {
           case t: Throwable =>
             logError(s"${t.getMessage} \n ${t.getStackTrace}")
@@ -149,10 +148,6 @@ object DotnetRunner extends Logging {
         } else {
           logInfo(s".NET application exited successfully")
         }
-        // TODO: The following is causing the following error:
-        // INFO ApplicationMaster: Final app status: FAILED, exitCode: 16,
-        // (reason: Shutdown hook called before final status was reported.)
-        // DotnetUtils.exit(returnCode)
       } else {
         // scalastyle:off println
         println("***********************************************************************")
@@ -161,12 +156,14 @@ object DotnetRunner extends Logging {
         // scalastyle:on println
 
         StdIn.readLine()
-        closeBackend(dotnetBackend)
-        DotnetUtils.exit(0)
+        dotnetBackend.close()
       }
     } else {
-      logError(s"DotnetBackend did not initialize in $backendTimeout seconds")
-      DotnetUtils.exit(-1)
+      val errorMessage = s"DotnetBackend did not initialize in $backendTimeout seconds"
+      // scalastyle:off println
+      System.err.println(errorMessage)
+      // scalastyle:on println
+      throw new SparkException(errorMessage)
     }
   }
 
@@ -226,11 +223,6 @@ object DotnetRunner extends Logging {
     }
 
     localFile
-  }
-
-  private def closeBackend(dotnetBackend: DotnetBackend): Unit = {
-    logInfo("Closing DotnetBackend")
-    dotnetBackend.close()
   }
 
   private def initializeSettings(args: Array[String]): (Boolean, Int) = {
