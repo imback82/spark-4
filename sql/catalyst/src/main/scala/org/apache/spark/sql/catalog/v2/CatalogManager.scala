@@ -83,26 +83,29 @@ class CatalogManager(conf: SQLConf, defaultSessionCatalog: TableCatalog) extends
   private var _currentNamespace: Option[Array[String]] = None
 
   def currentNamespace: Array[String] = synchronized {
-    _currentNamespace.getOrElse {
-      currentCatalog.map { catalogName =>
-        getDefaultNamespace(catalog(catalogName))
-      }.getOrElse(Array("default")) // The builtin catalog use "default" as the default database.
-    }
+    _currentNamespace.getOrElse(getDefaultNamespace(currentCatalog))
   }
 
   def setCurrentNamespace(namespace: Array[String]): Unit = synchronized {
     _currentNamespace = Some(namespace)
   }
 
-  private var _currentCatalog: Option[String] = None
+  private var _currentCatalogName: Option[String] = None
 
-  // Returns the name of current catalog. None means the current catalog is the builtin catalog.
-  def currentCatalog: Option[String] = synchronized {
-    _currentCatalog.orElse(conf.defaultV2Catalog)
+  def currentCatalog: CatalogPlugin = synchronized {
+    _currentCatalogName.map { catalogName =>
+      try {
+        catalog(catalogName)
+      } catch {
+        case NonFatal(e) =>
+          logError(s"Cannot load v2 catalog: $catalogName", e)
+          v2SessionCatalog
+      }
+    }.getOrElse(v2SessionCatalog)
   }
 
   def setCurrentCatalog(catalogName: String): Unit = synchronized {
-    _currentCatalog = Some(catalogName)
+    _currentCatalogName = Some(catalogName)
     _currentNamespace = None
   }
 
@@ -110,7 +113,7 @@ class CatalogManager(conf: SQLConf, defaultSessionCatalog: TableCatalog) extends
   private[sql] def reset(): Unit = synchronized {
     catalogs.clear()
     _currentNamespace = None
-    _currentCatalog = None
+    _currentCatalogName = None
   }
 }
 
