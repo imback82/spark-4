@@ -99,9 +99,9 @@ class CatalogManager(conf: SQLConf, defaultSessionCatalog: TableCatalog) extends
       } catch {
         case NonFatal(e) =>
           logError(s"Cannot load v2 catalog: $catalogName", e)
-          v2SessionCatalog
+          defaultCatalog.getOrElse(v2SessionCatalog)
       }
-    }.getOrElse(v2SessionCatalog)
+    }.orElse(defaultCatalog).getOrElse(v2SessionCatalog)
   }
 
   def setCurrentCatalog(catalogName: String): Unit = synchronized {
