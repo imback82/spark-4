@@ -819,6 +819,15 @@ class DDLParserSuite extends AnalysisTest {
       ShowNamespacesStatement(Some(Seq("testcat", "ns1")), Some("*pattern*")))
   }
 
+  test("show databases") {
+    comparePlans(
+      parsePlan("SHOW DATABASES"),
+      ShowNamespacesStatement(None, None))
+    comparePlans(
+      parsePlan("SHOW DATABASES LIKE 'defau*'"),
+      ShowNamespacesStatement(None, Some("defau*")))
+  }
+
   private case class TableSpec(
       name: Seq[String],
       schema: Option[StructType],

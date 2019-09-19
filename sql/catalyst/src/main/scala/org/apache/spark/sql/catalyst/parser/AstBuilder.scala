@@ -2279,6 +2279,15 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
   }
 
   /**
+   * Create a [[ShowNamespacesStatement]] command.
+   *
+   * 'SHOW DATABASES' behaves the same as 'SHOW NAMESPACES'.
+   */
+  override def visitShowDatabases(ctx: ShowDatabasesContext): LogicalPlan = withOrigin(ctx) {
+    ShowNamespacesStatement(None, Option(ctx.pattern).map(string))
+  }
+
+  /**
    * Create a table, returning a [[CreateTableStatement]] logical plan.
    *
    * Expected format:
