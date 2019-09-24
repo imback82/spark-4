@@ -20,7 +20,8 @@ package org.apache.spark.sql.connector.catalog
 import java.util
 
 import org.apache.spark.SparkFunSuite
-import org.apache.spark.sql.catalyst.analysis.FakeV2SessionCatalog
+import org.apache.spark.sql.catalyst.analysis.{EmptyFunctionRegistry, FakeV2SessionCatalog, NoSuchNamespaceException}
+import org.apache.spark.sql.catalyst.catalog.{CatalogDatabase, InMemoryCatalog, SessionCatalog}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
@@ -28,8 +29,9 @@ class CatalogManagerSuite extends SparkFunSuite {
 
   test("CatalogManager should reflect the changes of default catalog") {
     val conf = new SQLConf
-    val catalogManager = new CatalogManager(conf, FakeV2SessionCatalog)
-    assert(catalogManager.currentCatalog.name == CatalogManager.SESSION_CATALOG_NAME)
+    val v1SessionCatalog = new SessionCatalog(new InMemoryCatalog, EmptyFunctionRegistry, conf)
+    val catalogManager = new CatalogManager(conf, FakeV2SessionCatalog, v1SessionCatalog)
+    assert(catalogManager.currentCatalog.name() == CatalogManager.SESSION_CATALOG_NAME)
     // FakeV2SessionCatalog does not support namespaces.
     assert(catalogManager.currentNamespace.sameElements(Array.empty[String]))
 
@@ -37,14 +39,15 @@ class CatalogManagerSuite extends SparkFunSuite {
     conf.setConfString(SQLConf.DEFAULT_V2_CATALOG.key, "dummy")
 
     // The current catalog should be changed if the default catalog is set.
-    assert(catalogManager.currentCatalog.name == "dummy")
+    assert(catalogManager.currentCatalog.name() == "dummy")
     assert(catalogManager.currentNamespace.sameElements(Array("a", "b")))
   }
 
   test("CatalogManager should keep the current catalog once set") {
     val conf = new SQLConf
-    val catalogManager = new CatalogManager(conf, FakeV2SessionCatalog)
-    assert(catalogManager.currentCatalog.name == "fake_v2_session")
+    val v1SessionCatalog = new SessionCatalog(new InMemoryCatalog, EmptyFunctionRegistry, conf)
+    val catalogManager = new CatalogManager(conf, FakeV2SessionCatalog, v1SessionCatalog)
+    assert(catalogManager.currentCatalog.name() == CatalogManager.SESSION_CATALOG_NAME)
     conf.setConfString("spark.sql.catalog.dummy", classOf[DummyCatalog].getName)
     catalogManager.setCurrentCatalog("dummy")
     assert(catalogManager.currentCatalog.name == "dummy")
@@ -53,18 +56,51 @@ class CatalogManagerSuite extends SparkFunSuite {
     conf.setConfString("spark.sql.catalog.dummy2", classOf[DummyCatalog].getName)
     conf.setConfString(SQLConf.DEFAULT_V2_CATALOG.key, "dummy2")
     // The current catalog shouldn't be changed if it's set before.
-    assert(catalogManager.currentCatalog.name == "dummy")
+    assert(catalogManager.currentCatalog.name() == "dummy")
   }
 
   test("current namespace should be updated when switching current catalog") {
     val conf = new SQLConf
-    val catalogManager = new CatalogManager(conf, FakeV2SessionCatalog)
-    catalogManager.setCurrentNamespace(Array("abc"))
-    assert(catalogManager.currentNamespace.sameElements(Array("abc")))
+    val v1SessionCatalog = new SessionCatalog(new InMemoryCatalog, EmptyFunctionRegistry, conf)
+    v1SessionCatalog.createDatabase(
+      CatalogDatabase(
+        "test", "", v1SessionCatalog.getDefaultDBPath("test"), Map.empty),
+      ignoreIfExists = false)
+
+    val catalogManager = new CatalogManager(conf, FakeV2SessionCatalog, v1SessionCatalog)
+    catalogManager.setCurrentNamespace(Array("test"))
+    assert(catalogManager.currentNamespace.sameElements(Array("test")))
 
     conf.setConfString("spark.sql.catalog.dummy", classOf[DummyCatalog].getName)
     catalogManager.setCurrentCatalog("dummy")
     assert(catalogManager.currentNamespace.sameElements(Array("a", "b")))
+  }
+
+  test("set current namespace") {
+    val conf = new SQLConf
+    val v1SessionCatalog = new SessionCatalog(new InMemoryCatalog, EmptyFunctionRegistry, conf)
+    v1SessionCatalog.createDatabase(
+      CatalogDatabase(
+        "test", "", v1SessionCatalog.getDefaultDBPath("test"), Map.empty),
+      ignoreIfExists = false)
+    val catalogManager = new CatalogManager(conf, FakeV2SessionCatalog, v1SessionCatalog)
+
+    // If the current catalog is session catalog, setting current namespace actually sets
+    // `SessionCatalog.currentDb`.
+    catalogManager.setCurrentNamespace(Array("test"))
+    assert(catalogManager.currentNamespace.sameElements(Array("test")))
+    assert(v1SessionCatalog.getCurrentDatabase == "test")
+
+    intercept[NoSuchNamespaceException] {
+      catalogManager.setCurrentNamespace(Array("ns1", "ns2"))
+    }
+
+    // If the current catalog is not session catalog, setting current namespace won't affect
+    // `SessionCatalog.currentDb`.
+    conf.setConfString("spark.sql.catalog.dummy", classOf[DummyCatalog].getName)
+    catalogManager.setCurrentCatalog("dummy")
+    catalogManager.setCurrentNamespace(Array("test2"))
+    assert(v1SessionCatalog.getCurrentDatabase == "test")
   }
 }
 

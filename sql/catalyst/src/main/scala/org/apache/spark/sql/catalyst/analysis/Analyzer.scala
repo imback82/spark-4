@@ -121,7 +121,7 @@ class Analyzer(
     this(catalog, v2SessionCatalog, conf, conf.optimizerMaxIterations)
   }
 
-  override val catalogManager: CatalogManager = new CatalogManager(conf, v2SessionCatalog)
+  override val catalogManager: CatalogManager = new CatalogManager(conf, v2SessionCatalog, catalog)
 
   def executeAndCheck(plan: LogicalPlan, tracker: QueryPlanningTracker): LogicalPlan = {
     AnalysisHelper.markInAnalyzer {

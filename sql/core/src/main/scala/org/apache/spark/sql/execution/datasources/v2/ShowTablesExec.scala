@@ -24,8 +24,8 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions.{Attribute, GenericRowWithSchema}
 import org.apache.spark.sql.catalyst.util.StringUtils
+import org.apache.spark.sql.connector.catalog.{SupportsNamespaces, TableCatalog}
 import org.apache.spark.sql.connector.catalog.CatalogV2Implicits.NamespaceHelper
-import org.apache.spark.sql.connector.catalog.TableCatalog
 import org.apache.spark.sql.execution.LeafExecNode
 
 /**
@@ -41,14 +41,18 @@ case class ShowTablesExec(
     val rows = new ArrayBuffer[InternalRow]()
     val encoder = RowEncoder(schema).resolveAndBind()
 
+    logError(s"namespace: ${namespace.mkString(".")}")
+    logError(s"catalog: $catalog")
+    val ns = catalog match {
+      case s: SupportsNamespaces => s.listNamespaces()
+    }
+    ns.map(a => logError(a.mkString(".")))
+
     val tables = catalog.listTables(namespace.toArray)
     tables.map { table =>
       if (pattern.map(StringUtils.filterPattern(Seq(table.name()), _).nonEmpty).getOrElse(true)) {
         rows += encoder
-          .toRow(
-            new GenericRowWithSchema(
-              Array(table.namespace().quoted, table.name()),
-              schema))
+          .toRow(new GenericRowWithSchema(Array(table.namespace().quoted, table.name()), schema))
           .copy()
       }
     }

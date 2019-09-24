@@ -38,7 +38,6 @@ case class UseCatalogAndNamespaceExec(
     catalogName.map(catalogManager.setCurrentCatalog)
 
     namespace.map { ns =>
-      SparkSession.active.sessionState.catalog.setCurrentDatabase(ns.head)
       catalogManager.setCurrentNamespace(ns.toArray)
     }
 
