@@ -108,7 +108,6 @@ private[sql] object SQLUtils extends Logging {
   }
 
   def createDF(rdd: RDD[Array[Byte]], schema: StructType, sparkSession: SparkSession): DataFrame = {
-    val num = schema.fields.length
     val rowRDD = rdd.map(bytesToRow(_, schema))
     sparkSession.createDataFrame(rowRDD, schema)
   }

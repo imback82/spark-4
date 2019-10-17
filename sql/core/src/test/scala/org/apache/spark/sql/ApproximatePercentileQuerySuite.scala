@@ -228,7 +228,6 @@ class ApproximatePercentileQuerySuite extends QueryTest with SharedSparkSession 
 
   test("percentile_approx(col, ...), input rows contains null, with group by") {
     withTempView(table) {
-      val rand = new java.util.Random()
       (1 to 1000)
         .map(Integer.valueOf(_))
         .map(v => (Integer.valueOf(v % 2), v))
@@ -271,7 +270,6 @@ class ApproximatePercentileQuerySuite extends QueryTest with SharedSparkSession 
         val sortedValues = values.map(_._2).sorted
 
         var outputRows = Seq.empty[Row]
-        var i = 0
 
         val percentile = new PercentileDigest(1.0 / DEFAULT_PERCENTILE_ACCURACY)
         sortedValues.foreach { value =>

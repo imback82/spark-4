@@ -67,7 +67,6 @@ object ExplainUtils {
         printOperatorId = true)
 
       append("\n")
-      var i: Integer = 0
       for ((opId, curPlan) <- operationIDs) {
         append(curPlan.verboseStringWithOperatorId())
       }

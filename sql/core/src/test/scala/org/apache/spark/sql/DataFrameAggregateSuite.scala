@@ -192,7 +192,6 @@ class DataFrameAggregateSuite extends QueryTest with SharedSparkSession {
 
   test("grouping/grouping_id inside window function") {
 
-    val w = Window.orderBy(sum("earnings"))
     checkAnswer(
       courseSales.cube("course", "year")
         .agg(sum("earnings"),
@@ -835,7 +834,7 @@ class DataFrameAggregateSuite extends QueryTest with SharedSparkSession {
     )
 
     withTempView("tempView") {
-      val dfWithMap = Seq((0, "a"), (1, "b"), (2, "c"))
+      Seq((0, "a"), (1, "b"), (2, "c"))
         .toDF("x", "y")
         .select($"x", map($"x", $"y").as("y"))
         .createOrReplaceTempView("tempView")
