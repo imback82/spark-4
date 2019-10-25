@@ -136,14 +136,6 @@ class SparkSqlAstBuilder(conf: SQLConf) extends AstBuilder(conf) {
   }
 
   /**
-   * Creates a [[ShowCreateTableCommand]]
-   */
-  override def visitShowCreateTable(ctx: ShowCreateTableContext): LogicalPlan = withOrigin(ctx) {
-    val table = visitTableIdentifier(ctx.tableIdentifier())
-    ShowCreateTableCommand(table)
-  }
-
-  /**
    * Create a [[RefreshResource]] logical plan.
    */
   override def visitRefreshResource(ctx: RefreshResourceContext): LogicalPlan = withOrigin(ctx) {
@@ -163,13 +155,6 @@ class SparkSqlAstBuilder(conf: SQLConf) extends AstBuilder(conf) {
       "REFRESH statements cannot contain ' ', '\\n', '\\r', '\\t' inside unquoted resource paths",
       ctx)
     unquotedPath
-  }
-
-  /**
-   * Create an [[UncacheTableCommand]] logical plan.
-   */
-  override def visitUncacheTable(ctx: UncacheTableContext): LogicalPlan = withOrigin(ctx) {
-    UncacheTableCommand(visitTableIdentifier(ctx.tableIdentifier), ctx.EXISTS != null)
   }
 
   /**
