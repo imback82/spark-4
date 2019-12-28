@@ -75,7 +75,28 @@ case class HashAggregateExec(
 
   override def output: Seq[Attribute] = resultExpressions.map(_.toAttribute)
 
-  override def outputPartitioning: Partitioning = child.outputPartitioning
+  override def outputPartitioning: Partitioning = {
+    child.outputPartitioning match {
+      case HashPartitioning(expressions, numPartitions) =>
+        // Replace aliases in projectList with its child expressions for any matching
+        // expressions in HashPartitioning. This is to ensure that outputPartitioning
+        // correctly matches witch requiredChildDistribution.
+        val newExpressions = expressions.map {
+          case a: AttributeReference =>
+            removeAlias(a).getOrElse(a)
+          case other => other
+        }
+        HashPartitioning(newExpressions, numPartitions)
+      case other => other
+    }
+  }
+
+  private def removeAlias(attr: AttributeReference): Option[Attribute] = {
+    resultExpressions.collectFirst {
+      case a @ Alias(child@AttributeReference(_, _, _, _), _) if child.semanticEquals(attr) =>
+        a.toAttribute
+    }
+  }
 
   override def producedAttributes: AttributeSet =
     AttributeSet(aggregateAttributes) ++
