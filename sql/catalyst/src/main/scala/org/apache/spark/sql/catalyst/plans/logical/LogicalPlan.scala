@@ -126,6 +126,7 @@ abstract class LogicalPlan
    */
   def refresh(): Unit = children.foreach(_.refresh())
 
+
   /**
    * Returns the output ordering that this plan generates.
    */

@@ -26,7 +26,7 @@ import org.apache.spark.sql.catalyst.plans.logical.{LocalRelation, LogicalPlan, 
 import org.apache.spark.sql.catalyst.plans.physical._
 import org.apache.spark.sql.execution.adaptive.AdaptiveSparkPlanHelper
 import org.apache.spark.sql.execution.columnar.{InMemoryRelation, InMemoryTableScanExec}
-import org.apache.spark.sql.execution.exchange.{EnsureRequirements, ReusedExchangeExec, ReuseExchange, ShuffleExchangeExec}
+import org.apache.spark.sql.execution.exchange.{EnsureRequirements, Exchange, ReusedExchangeExec, ReuseExchange, ShuffleExchangeExec}
 import org.apache.spark.sql.execution.joins.{BroadcastHashJoinExec, SortMergeJoinExec}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.internal.SQLConf
@@ -988,10 +988,31 @@ class PlannerSuite extends SharedSparkSession with AdaptiveSparkPlanHelper {
       val t2 = spark.range(10).selectExpr("floor(id/4) as k2")
 
       val agg1 = t1.groupBy("k1").agg(count(lit("1")).as("cnt1"))
+      agg1.show
       val agg2 = t2.groupBy("k2").agg(count(lit("1")).as("cnt2")).withColumnRenamed("k2", "k3")
+      agg2.show
       val planned = agg1.join(agg2, $"k1" === $"k3").queryExecution.executedPlan
+      val df = agg1.join(agg2, $"k1" === $"k3")
+      df.show
       val exchanges = planned.collect { case s: ShuffleExchangeExec => s }
       assert(exchanges.size == 2)
+    }
+  }
+
+  test("aliases in the object aggregate expressions should not introduce extra shuffle") {
+    withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "-1") {
+      val t1 = Seq(("1", 1), ("1", 2), ("2", 3), ("2", 4)).toDF("x", "y")
+        .withColumnRenamed("x", "k1")
+      val t2 = Seq(("1", 1), ("1", 2), ("2", 3), ("2", 4)).toDF("x", "y")
+      val agg1 = t1.groupBy("k1").agg(typed_count($"y"))
+      val agg2 = t2.groupBy("x").agg(typed_count("y")).withColumnRenamed("x", "xx")
+      // val agg1 = t1.groupBy("k1").agg(count(lit("1")).as("cnt1"))
+      .. val agg2 = t2.groupBy("x").agg(count(lit("1")).as("cnt2")).withColumnRenamed("x", "xx")
+      val df = agg1.join(agg2, $"k1" === $"xx")
+      val exchanges = df.queryExecution.executedPlan.collect { case s: ShuffleExchangeExec => s }
+      // assert(exchanges.size == 2)
+      df.explain(true)
+      df.show
     }
   }
 }
