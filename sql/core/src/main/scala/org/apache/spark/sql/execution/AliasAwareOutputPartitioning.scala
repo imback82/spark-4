@@ -16,7 +16,7 @@
  */
 package org.apache.spark.sql.execution
 
-import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, AttributeReference, Expression, NamedExpression}
+import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, AttributeReference, Expression, NamedExpression, SortOrder}
 import org.apache.spark.sql.catalyst.plans.physical.{HashPartitioning, Partitioning}
 
 /**
@@ -25,6 +25,13 @@ import org.apache.spark.sql.catalyst.plans.physical.{HashPartitioning, Partition
  */
 trait AliasAwareOutputPartitioning extends UnaryExecNode {
   protected def outputExpressions: Seq[NamedExpression]
+
+  final override def outputOrdering: Seq[SortOrder] = child.outputOrdering.map {
+    case s @ SortOrder(e: AttributeReference, _, _, _) =>
+      s.copy(child = replaceAlias(e).getOrElse(e))
+    case s =>
+      s
+  }
 
   final override def outputPartitioning: Partitioning = {
     if (hasAlias) {

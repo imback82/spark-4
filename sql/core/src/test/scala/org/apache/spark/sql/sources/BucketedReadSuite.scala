@@ -818,6 +818,15 @@ abstract class BucketedReadSuite extends QueryTest with SQLTestUtils {
     }
   }
 
+  test("terry") {
+    withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "0") {
+      val df1 = Seq((1, 2), (3, 4)).toDF("a", "b").coalesce(1).sort("a")
+      val df3 = df1.selectExpr("a as newA", "b").coalesce(1).sort("newA")
+      val f = df1.as("a").join(df3.as("b"), $"a.a" === $"b.newA")
+      f.explain(true)
+    }
+  }
+
   test("SPARK-29655 Read bucketed tables obeys spark.sql.shuffle.partitions") {
     withSQLConf(
       SQLConf.SHUFFLE_PARTITIONS.key -> "5",

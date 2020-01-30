@@ -68,10 +68,6 @@ case class SortAggregateExec(
 
   override protected def outputExpressions: Seq[NamedExpression] = resultExpressions
 
-  override def outputOrdering: Seq[SortOrder] = {
-    groupingExpressions.map(SortOrder(_, Ascending))
-  }
-
   protected override def doExecute(): RDD[InternalRow] = attachTree(this, "execute") {
     val numOutputRows = longMetric("numOutputRows")
     child.execute().mapPartitionsWithIndexInternal { (partIndex, iter) =>
