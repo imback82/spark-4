@@ -728,6 +728,9 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
         } else {
           execution.CoalesceExec(numPartitions, planLater(child)) :: Nil
         }
+      case logical.BucketingRepartition(numBuckets, originalBucket, child) =>
+        execution.bucketing.BucketingCoalesceExec(
+          numBuckets, originalBucket, planLater(child)) :: Nil
       case logical.Sort(sortExprs, global, child) =>
         execution.SortExec(sortExprs, global, planLater(child)) :: Nil
       case logical.Project(projectList, child) =>

@@ -21,7 +21,7 @@ import scala.collection.mutable
 
 import org.apache.spark.sql.catalyst.AliasIdentifier
 import org.apache.spark.sql.catalyst.analysis.{MultiInstanceRelation}
-import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable}
+import org.apache.spark.sql.catalyst.catalog.{BucketSpec, CatalogStorageFormat, CatalogTable}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, AggregateFunction}
 import org.apache.spark.sql.catalyst.plans._
@@ -988,6 +988,15 @@ case class RepartitionByExpression(
 
   override def maxRows: Option[Long] = child.maxRows
   override def shuffle: Boolean = true
+}
+
+case class BucketingRepartition(
+    numBuckets: Int,
+    originalBucket: BucketSpec,
+    child: LogicalPlan) extends UnaryNode {
+  require(numBuckets > 0, s"Number of buckets ($numBuckets) must be positive.")
+
+  override def output: Seq[Attribute] = child.output
 }
 
 /**
