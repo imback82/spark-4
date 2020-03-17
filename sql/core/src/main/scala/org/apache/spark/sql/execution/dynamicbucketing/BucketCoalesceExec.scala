@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.sql.execution.bucketing
+package org.apache.spark.sql.execution.dynamicbucketing
 
 import org.apache.spark.Partition
 import org.apache.spark.rdd.{CoalescedRDD, CoalescedRDDPartition, RDD}
@@ -25,17 +25,19 @@ import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.plans.physical.{HashPartitioning, Partitioning}
 import org.apache.spark.sql.execution.{SparkPlan, UnaryExecNode}
 
-private[spark] class BucketingCoalescedRDD(
+private[spark] class BucketCoalescedRDD(
     prev: RDD[InternalRow],
     numBuckets: Int) extends CoalescedRDD[InternalRow](prev, numBuckets) {
   override def getPartitions: Array[Partition] = {
+    // TODO: We can run DefaultPartitionCoalescer then redistribute to make sure
+    //  preferred location, etc. are set correctly.
     prev.partitions.groupBy(p => p.index % numBuckets).toSeq.sortBy(_._1).map { x =>
       CoalescedRDDPartition(x._1, prev, x._2.map(_.index))
     }.toArray
   }
 }
 
-case class BucketingCoalesceExec(
+case class BucketCoalesceExec(
     numBuckets: Int,
     originalBucketSpec: BucketSpec,
     child: SparkPlan) extends UnaryExecNode {
@@ -49,6 +51,6 @@ case class BucketingCoalesceExec(
   }
 
   protected override def doExecute(): RDD[InternalRow] = {
-    new BucketingCoalescedRDD(child.execute(), numBuckets)
+    new BucketCoalescedRDD(child.execute(), numBuckets)
   }
 }

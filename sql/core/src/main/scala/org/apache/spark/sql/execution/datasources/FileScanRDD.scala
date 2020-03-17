@@ -108,6 +108,7 @@ class FileScanRDD(
           }
           inputMetrics.incRecordsRead(1)
         }
+
         nextElement
       }
 

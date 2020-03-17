@@ -990,7 +990,7 @@ case class RepartitionByExpression(
   override def shuffle: Boolean = true
 }
 
-case class BucketingRepartition(
+case class BucketRepartition(
     numBuckets: Int,
     originalBucket: BucketSpec,
     child: LogicalPlan) extends UnaryNode {
