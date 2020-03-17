@@ -830,6 +830,52 @@ abstract class BucketedReadSuite extends QueryTest with SQLTestUtils {
     }
   }
 
+  test("terry") {
+    withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "0",
+      SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "false") {
+      val df1 = (0 until 1000).map(i => (i % 5, i % 13, i.toString)).toDF("i", "j", "k").as("df1")
+      val df2 = (0 until 1000).map(i => (i % 7, i % 11, i.toString)).toDF("i", "j", "k").as("df2")
+      df1.write.format("parquet").bucketBy(16, "i").sortBy("i").saveAsTable("t1")
+      df2.write.format("parquet").bucketBy(2, "i").sortBy("i").saveAsTable("t2")
+      val t1 = spark.table("t1")
+      val t2 = spark.table("t2")
+      val joined = t1.join(t2, t1("i") === t2("i"))
+      joined.explain
+      joined.show
+    }
+  }
+
+  test("terry2") {
+    withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "0",
+      SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "true") {
+      val df1 = (0 until 10).map(i => (i % 5)).toDF("i").as("df1")
+      val df2 = (0 until 10).map(i => (i % 7)).toDF("i").as("df2")
+      df1.repartition(1).write.format("csv").bucketBy(32, "i").sortBy("i").saveAsTable("t1")
+      df2.repartition(1).write.format("csv").bucketBy(4, "i").sortBy("i").saveAsTable("t2")
+      val t1 = spark.table("t1")
+      val t2 = spark.table("t2")
+      val joined = t1.join(t2, t1("i") === t2("i"))
+      joined.explain
+      joined.show
+    }
+  }
+
+  test("terry3") {
+    withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "0",
+      SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "true") {
+      val df1 = (0 until 10).map(i => i).toDF("i").as("df1")
+      val df2 = (0 until 10).map(i => i).toDF("i").as("df2")
+      df1.repartition(1).write.format("csv").bucketBy(4, "i").sortBy("i").saveAsTable("t1")
+      df2.repartition(1).write.format("csv").bucketBy(2, "i").sortBy("i").saveAsTable("t2")
+      val t1 = spark.table("t1")
+      val t2 = spark.table("t2")
+      val joined = t1.join(t2, t1("i") === t2("i"))
+      joined.explain
+      joined.show
+      val sdf = 234
+    }
+  }
+
   test("SPARK-29655 Read bucketed tables obeys spark.sql.shuffle.partitions") {
     withSQLConf(
       SQLConf.SHUFFLE_PARTITIONS.key -> "5",
