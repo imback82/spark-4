@@ -88,7 +88,7 @@ object DynamicBucketRepartitioning extends Rule[LogicalPlan]  {
 
         join.transformUp {
           case l @ LogicalRelation(r: HadoopFsRelation, _, _, _)
-            if r.bucketSpec.nonEmpty && r.bucketSpec.get.numBuckets != newNumBuckets =>
+            if r.bucketSpec.nonEmpty && r.bucketSpec.get.numBuckets != newNumBuckets.get =>
             BucketRepartition(newNumBuckets.get, r.bucketSpec.get, l)
         }
       case other => other
