@@ -175,7 +175,8 @@ case class CatalogTablePartition(
 case class BucketSpec(
     numBuckets: Int,
     bucketColumnNames: Seq[String],
-    sortColumnNames: Seq[String]) {
+    sortColumnNames: Seq[String],
+    numParallelism: Option[Int] = None) {
   def conf: SQLConf = SQLConf.get
 
   if (numBuckets <= 0 || numBuckets > conf.bucketingMaxBuckets) {

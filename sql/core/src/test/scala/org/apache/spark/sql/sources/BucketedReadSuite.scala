@@ -117,7 +117,7 @@ abstract class BucketedReadSuite extends QueryTest with SQLTestUtils {
     // This test verifies parts of the plan. Disable whole stage codegen.
     withSQLConf(SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "false") {
       val bucketedDataFrame = spark.table("bucketed_table").select("i", "j", "k")
-      val BucketSpec(numBuckets, bucketColumnNames, _) = bucketSpec
+      val BucketSpec(numBuckets, bucketColumnNames, _, _) = bucketSpec
       // Limit: bucket pruning only works when the bucket column has one and only one column
       assert(bucketColumnNames.length == 1)
       val bucketColumnIndex = bucketedDataFrame.schema.fieldIndex(bucketColumnNames.head)
@@ -630,6 +630,44 @@ abstract class BucketedReadSuite extends QueryTest with SQLTestUtils {
           val plan = sql("SELECT * FROM t a JOIN v b ON a.i = b.i").queryExecution.executedPlan
           assert(plan.collect { case exchange: ShuffleExchangeExec => exchange }.isEmpty)
         }
+      }
+    }
+  }
+
+  test("dynamic bucket repartition without shuffle") {
+    withTable("t1", "t2") {
+      withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "0",
+        SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "true",
+        "spark.sql.bucketing.enable" -> "true",
+        "spark.sql.bucketing.repartition" -> "true") {
+        val df1 = (0 until 20).map(i => (i % 5, i % 13, i.toString)).toDF("i", "j", "k")
+        val df2 = (0 until 20).map(i => (i % 7, i % 11, i.toString)).toDF("i", "j", "k")
+        df1.repartition(1).write.format("parquet").bucketBy(4, "i").sortBy("i").saveAsTable("t1")
+        df2.repartition(1).write.format("parquet").bucketBy(2, "i").sortBy("i").saveAsTable("t2")
+        val t1 = spark.table("t1")
+        val t2 = spark.table("t2")
+        val joined = t1.join(t2, t1("i") === t2("i"))
+        assert(joined.queryExecution.executedPlan.find(_.isInstanceOf[ShuffleExchangeExec]).isEmpty)
+        joined.show
+      }
+    }
+  }
+
+  test("dynamic bucket coalescing without shuffle") {
+    withTable("t1", "t2") {
+      withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "0",
+        SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "false",
+        "spark.sql.bucketing.enable" -> "true",
+        "spark.sql.bucketing.coalesce" -> "true") {
+        val df1 = (0 until 20).map(i => (i % 5, i % 13, i.toString)).toDF("i", "j", "k")
+        val df2 = (0 until 20).map(i => (i % 7, i % 11, i.toString)).toDF("i", "j", "k")
+        df1.repartition(1).write.format("parquet").bucketBy(4, "i").sortBy("i").saveAsTable("t1")
+        df2.repartition(1).write.format("parquet").bucketBy(2, "i").sortBy("i").saveAsTable("t2")
+        val t1 = spark.table("t1")
+        val t2 = spark.table("t2")
+        val joined = t1.join(t2, t1("i") === t2("i"))
+        assert(joined.queryExecution.executedPlan.find(_.isInstanceOf[ShuffleExchangeExec]).isEmpty)
+        joined.show
       }
     }
   }
