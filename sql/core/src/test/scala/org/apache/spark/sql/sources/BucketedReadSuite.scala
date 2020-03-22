@@ -117,7 +117,7 @@ abstract class BucketedReadSuite extends QueryTest with SQLTestUtils {
     // This test verifies parts of the plan. Disable whole stage codegen.
     withSQLConf(SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "false") {
       val bucketedDataFrame = spark.table("bucketed_table").select("i", "j", "k")
-      val BucketSpec(numBuckets, bucketColumnNames, _) = bucketSpec
+      val BucketSpec(numBuckets, bucketColumnNames, _, _) = bucketSpec
       // Limit: bucket pruning only works when the bucket column has one and only one column
       assert(bucketColumnNames.length == 1)
       val bucketColumnIndex = bucketedDataFrame.schema.fieldIndex(bucketColumnNames.head)
@@ -631,6 +631,23 @@ abstract class BucketedReadSuite extends QueryTest with SQLTestUtils {
           assert(plan.collect { case exchange: ShuffleExchangeExec => exchange }.isEmpty)
         }
       }
+    }
+  }
+
+  test("terry2") {
+    withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "0",
+      SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "true") {
+      spark.conf.set("spark.sql.bucketing.enable", "true")
+      spark.conf.set("spark.sql.bucketing.repartition", "true")
+      val df1 = (0 until 10).map(i => (i % 5)).toDF("i").as("df1")
+      val df2 = (0 until 10).map(i => (i % 7)).toDF("i").as("df2")
+      df1.repartition(1).write.format("parquet").bucketBy(4, "i").sortBy("i").saveAsTable("t1")
+      df2.repartition(1).write.format("parquet").bucketBy(2, "i").sortBy("i").saveAsTable("t2")
+      val t1 = spark.table("t1")
+      val t2 = spark.table("t2")
+      val joined = t1.join(t2, t1("i") === t2("i"))
+      joined.explain
+      joined.show
     }
   }
 

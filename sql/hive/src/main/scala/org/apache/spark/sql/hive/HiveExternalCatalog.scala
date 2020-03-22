@@ -447,7 +447,7 @@ private[spark] class HiveExternalCatalog(conf: SparkConf, hadoopConf: Configurat
     }
 
     if (bucketSpec.isDefined) {
-      val BucketSpec(numBuckets, bucketColumnNames, sortColumnNames) = bucketSpec.get
+      val BucketSpec(numBuckets, bucketColumnNames, sortColumnNames, _) = bucketSpec.get
 
       properties.put(DATASOURCE_SCHEMA_NUMBUCKETS, numBuckets.toString)
       properties.put(DATASOURCE_SCHEMA_NUMBUCKETCOLS, bucketColumnNames.length.toString)

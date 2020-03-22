@@ -34,6 +34,7 @@ import org.apache.spark.sql.catalyst.plans.physical.{HashPartitioning, Partition
 import org.apache.spark.sql.catalyst.util.truncatedString
 import org.apache.spark.sql.execution.datasources._
 import org.apache.spark.sql.execution.datasources.parquet.{ParquetFileFormat => ParquetSource}
+import org.apache.spark.sql.execution.dynamicbucketing.BucketRepartitionRDD2
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.sources.{BaseRelation, Filter}
@@ -267,6 +268,14 @@ case class FileSourceScanExec(
     }
   }
 
+  private lazy val (isBucketCoalescing, isBucketRepartition): (Boolean, Boolean) = {
+    relation.bucketSpec.map { spec =>
+      spec.numParallelism.map { numParallelism =>
+        (numParallelism < spec.numBuckets, numParallelism > spec.numBuckets)
+      }.getOrElse((false, false))
+    }.getOrElse((false, false))
+  }
+
   override lazy val (outputPartitioning, outputOrdering): (Partitioning, Seq[SortOrder]) = {
     if (bucketedScan) {
       // For bucketed columns:
@@ -289,7 +298,8 @@ case class FileSourceScanExec(
       // above
       val spec = relation.bucketSpec.get
       val bucketColumns = spec.bucketColumnNames.flatMap(n => toAttribute(n))
-      val partitioning = HashPartitioning(bucketColumns, spec.numBuckets)
+      val numPartitions = spec.numParallelism.getOrElse(spec.numBuckets)
+      val partitioning = HashPartitioning(bucketColumns, numPartitions)
       val sortColumns =
         spec.sortColumnNames.map(x => toAttribute(x)).takeWhile(x => x.isDefined).map(_.get)
       val shouldCalculateSortOrder =
@@ -309,7 +319,8 @@ case class FileSourceScanExec(
           files.map(_.getPath.getName).groupBy(file => BucketingUtils.getBucketId(file))
         val singleFilePartitions = bucketToFilesGrouping.forall(p => p._2.length <= 1)
 
-        if (singleFilePartitions) {
+        // TODO: Currently, sort order on bucket coalescing is not supported.
+        if (singleFilePartitions && !isBucketCoalescing) {
           // TODO Currently Spark does not support writing columns sorting in descending order
           // so using Ascending order. This can be fixed in future
           sortColumns.map(attribute => SortOrder(attribute, Ascending))
@@ -538,11 +549,39 @@ case class FileSourceScanExec(
       filesGroupedToBuckets
     }
 
-    val filePartitions = Seq.tabulate(bucketSpec.numBuckets) { bucketId =>
-      FilePartition(bucketId, prunedFilesGroupedToBuckets.getOrElse(bucketId, Array.empty))
+    val filePartitions = if (bucketSpec.numParallelism.isDefined) {
+      val numParallelism = bucketSpec.numParallelism.get
+      assert(numParallelism != bucketSpec.numBuckets)
+      if (numParallelism > bucketSpec.numBuckets) {
+        val ret = Seq.tabulate(numParallelism) { bucketId =>
+          FilePartition(
+            bucketId,
+            prunedFilesGroupedToBuckets.getOrElse(bucketId % bucketSpec.numBuckets, Array.empty))
+        }
+        // There will be more files read.
+        val filesNum = ret.map(_.files.size.toLong).sum
+        val filesSize = ret.map(_.files.map(_.length).sum).sum
+        driverMetrics("numFiles") = filesNum
+        driverMetrics("filesSize") = filesSize
+        ret
+      } else {
+        // TODO: Implement coalescing.
+        assert(false)
+        Seq.tabulate(bucketSpec.numBuckets) { bucketId =>
+          FilePartition(bucketId, prunedFilesGroupedToBuckets.getOrElse(bucketId, Array.empty))
+        }
+      }
+    } else {
+      Seq.tabulate(bucketSpec.numBuckets) { bucketId =>
+        FilePartition(bucketId, prunedFilesGroupedToBuckets.getOrElse(bucketId, Array.empty))
+      }
     }
 
-    new FileScanRDD(fsRelation.sparkSession, readFile, filePartitions)
+    if (isBucketRepartition) {
+      new BucketRepartitionRDD2(fsRelation.sparkSession, readFile, filePartitions)
+    } else {
+      new FileScanRDD(fsRelation.sparkSession, readFile, filePartitions)
+    }
   }
 
   /**

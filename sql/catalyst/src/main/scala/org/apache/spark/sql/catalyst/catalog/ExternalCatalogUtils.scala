@@ -186,7 +186,7 @@ object CatalogUtils {
       tableCols: Seq[String],
       bucketSpec: BucketSpec,
       resolver: Resolver): BucketSpec = {
-    val BucketSpec(numBuckets, bucketColumnNames, sortColumnNames) = bucketSpec
+    val BucketSpec(numBuckets, bucketColumnNames, sortColumnNames, _) = bucketSpec
     val normalizedBucketCols = bucketColumnNames.map { colName =>
       normalizeColumnName(tableName, tableCols, colName, "bucket", resolver)
     }
