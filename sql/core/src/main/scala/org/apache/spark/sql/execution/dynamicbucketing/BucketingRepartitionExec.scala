@@ -33,11 +33,11 @@ private[spark] class BucketRepartitionRDD2(
     @transient override val filePartitions: Seq[FilePartition])
   extends FileScanRDD(sparkSession, readFunction, filePartitions) {
   override def compute(split: Partition, context: TaskContext): Iterator[InternalRow] = {
-    val iter: Iterator[InternalRow] = super.compute(split, context)
+    val iter: Iterator[Object] = super.compute(split, context)
     iter.filter { row =>
       // getBucketId(row) == partition.index
-      true
-    }
+      false
+    }.asInstanceOf[Iterator[InternalRow]]
   }
 }
 
