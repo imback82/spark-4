@@ -578,7 +578,8 @@ case class FileSourceScanExec(
     }
 
     if (isBucketRepartition) {
-      new BucketRepartitionRDD2(fsRelation.sparkSession, readFile, filePartitions)
+      new BucketRepartitionRDD2(
+        fsRelation.sparkSession, readFile, filePartitions, bucketSpec, output)
     } else {
       new FileScanRDD(fsRelation.sparkSession, readFile, filePartitions)
     }
