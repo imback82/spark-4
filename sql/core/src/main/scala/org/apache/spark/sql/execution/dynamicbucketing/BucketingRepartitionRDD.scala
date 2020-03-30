@@ -18,7 +18,6 @@
 package org.apache.spark.sql.execution.dynamicbucketing
 
 import scala.collection.mutable.ListBuffer
-import scala.reflect.runtime.universe._
 
 import org.apache.spark.{Partition, TaskContext}
 import org.apache.spark.rdd.{CoalescedRDD, CoalescedRDDPartition, RDD}
@@ -33,7 +32,7 @@ import org.apache.spark.sql.execution.vectorized.{MappedColumnVector, WritableCo
 import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DateType, DecimalType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, TimestampType}
 import org.apache.spark.sql.vectorized.{ColumnarBatch, ColumnVector}
 
-private[spark] class BucketRepartitionRDD2(
+private[spark] class BucketingRepartitionRDD(
     @transient private val sparkSession: SparkSession,
     readFunction: PartitionedFile => Iterator[InternalRow],
     @transient override val filePartitions: Seq[FilePartition],
@@ -41,29 +40,27 @@ private[spark] class BucketRepartitionRDD2(
     output: Seq[Attribute])
   extends FileScanRDD(sparkSession, readFunction, filePartitions) {
   override def compute(split: Partition, context: TaskContext): Iterator[InternalRow] = {
-    def getIter[A: TypeTag](iter: Iterator[A]): Iterator[_] = iter match {
-      case _ if typeOf[A] =:= typeOf[ColumnarBatch] =>
-        iter.map {
-          case batch: ColumnarBatch =>
-            val mapping = new ListBuffer[Int]()
-            for (i <- 0 until batch.numRows) {
-              if (getBucketId(batch.getRow(i)) == split.index) {
-                mapping.append(i)
-              }
-            }
-            for (i <- 0 until batch.numCols) {
-              convert(mapping, batch.column(i).asInstanceOf[WritableColumnVector])
-            }
-            batch.setNumRows(mapping.length)
-            batch
+    val iter: Iterator[_] = super.compute(split, context)
+    iter.map {
+      case batch: ColumnarBatch =>
+        val mapping = new ListBuffer[Int]()
+        for (i <- 0 until batch.numRows) {
+          if (getBucketId(batch.getRow(i)) == split.index) {
+            mapping.append(i)
+          }
         }
-      case _ if typeOf[A] =:= typeOf[InternalRow] =>
-        iter.filter {
-          case r: InternalRow =>
-            getBucketId(r) == split.index
+        for (i <- 0 until batch.numCols) {
+          convert(mapping, batch.column(i).asInstanceOf[WritableColumnVector])
         }
+        batch.setNumRows(mapping.length)
+        batch
+      case other => other
     }
-    getIter(super.compute(split, context)).asInstanceOf[Iterator[InternalRow]]
+    .filter {
+      case r: InternalRow =>
+        getBucketId(r) == split.index
+      case _ => true
+    }.asInstanceOf[Iterator[InternalRow]]
   }
 
   private def convert(mapping: Seq[Int], col: WritableColumnVector): Unit = {
@@ -155,59 +152,5 @@ private[spark] class BucketRepartitionRDD2(
 
     val projection = UnsafeProjection.create(Seq(bucketIdExpression), output)
     row => projection(row).getInt(0)
-  }
-}
-
-private[spark] class BucketRepartitionRDD(
-    prev: RDD[InternalRow],
-    originalBucketSpec: BucketSpec,
-    numBuckets: Int,
-    output: Seq[Attribute]) extends CoalescedRDD[InternalRow](prev, numBuckets) {
-  override def getPartitions: Array[Partition] = {
-    val parts = new Array[CoalescedRDDPartition](numBuckets)
-    for (i <- 0 until numBuckets) {
-      parts(i) = CoalescedRDDPartition(i, prev, Array(i % prev.partitions.length))
-    }
-    parts.toArray
-  }
-
-  private lazy val getBucketId: InternalRow => Int = {
-    val bucketIdExpression = {
-      val bucketColumns = originalBucketSpec.bucketColumnNames.map(
-        c => output.find(_.name == c).get)
-      HashPartitioning(bucketColumns, numBuckets).partitionIdExpression
-    }
-
-    val projection = UnsafeProjection.create(Seq(bucketIdExpression), output)
-    row => projection(row).getInt(0)
-  }
-
-  override def compute(partition: Partition, context: TaskContext): Iterator[InternalRow] = {
-    assert(partition.asInstanceOf[CoalescedRDDPartition].parents.length == 1)
-    partition.asInstanceOf[CoalescedRDDPartition].parents.iterator.flatMap { parentPartition =>
-      firstParent[InternalRow].iterator(parentPartition, context).filter { row =>
-        getBucketId(row) == partition.index
-      }
-    }
-  }
-}
-
-case class BucketingRepartitionExec(
-    numBuckets: Int,
-    originalBucketSpec: BucketSpec,
-    child: SparkPlan) extends UnaryExecNode {
-  override def output: Seq[Attribute] = child.output
-
-  override def outputOrdering: Seq[SortOrder] = child.outputOrdering
-
-  override def outputPartitioning: Partitioning = {
-    child.outputPartitioning match {
-      case h: HashPartitioning => HashPartitioning(h.expressions, numBuckets)
-      case other => other
-    }
-  }
-
-  protected override def doExecute(): RDD[InternalRow] = {
-    new BucketRepartitionRDD(child.execute(), originalBucketSpec, numBuckets, output)
   }
 }

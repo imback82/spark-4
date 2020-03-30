@@ -34,7 +34,7 @@ import org.apache.spark.sql.catalyst.plans.physical.{HashPartitioning, Partition
 import org.apache.spark.sql.catalyst.util.truncatedString
 import org.apache.spark.sql.execution.datasources._
 import org.apache.spark.sql.execution.datasources.parquet.{ParquetFileFormat => ParquetSource}
-import org.apache.spark.sql.execution.dynamicbucketing.BucketRepartitionRDD2
+import org.apache.spark.sql.execution.dynamicbucketing.BucketingRepartitionRDD
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.sources.{BaseRelation, Filter}
@@ -578,7 +578,7 @@ case class FileSourceScanExec(
     }
 
     if (isBucketRepartition) {
-      new BucketRepartitionRDD2(
+      new BucketingRepartitionRDD(
         fsRelation.sparkSession, readFile, filePartitions, bucketSpec, output)
     } else {
       new FileScanRDD(fsRelation.sparkSession, readFile, filePartitions)

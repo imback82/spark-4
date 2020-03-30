@@ -639,8 +639,8 @@ abstract class BucketedReadSuite extends QueryTest with SQLTestUtils {
       SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "true") {
       spark.conf.set("spark.sql.bucketing.enable", "true")
       spark.conf.set("spark.sql.bucketing.repartition", "true")
-      val df1 = (0 until 10).map(i => (i % 5)).toDF("i").as("df1")
-      val df2 = (0 until 10).map(i => (i % 7)).toDF("i").as("df2")
+      val df1 = (0 until 20).map(i => (i % 5, i % 13, i.toString)).toDF("i", "j", "k").as("df1")
+      val df2 = (0 until 20).map(i => (i % 7, i % 11, i.toString)).toDF("i", "j", "k").as("df2")
       df1.repartition(1).write.format("parquet").bucketBy(4, "i").sortBy("i").saveAsTable("t1")
       df2.repartition(1).write.format("parquet").bucketBy(2, "i").sortBy("i").saveAsTable("t2")
       val t1 = spark.table("t1")
