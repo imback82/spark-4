@@ -41,14 +41,16 @@ private[spark] class BucketingRepartitionRDD(
     val iter: Iterator[_] = super.compute(split, context)
     iter.map {
       case batch: ColumnarBatch =>
-        val mapping = new ListBuffer[Int]()
+        var curIndex = 0
+        val mapping = new Array[Int](batch.numRows)
         for (i <- 0 until batch.numRows) {
           if (getBucketId(batch.getRow(i)) == split.index) {
-            mapping.append(i)
+            mapping(curIndex) = i
+            curIndex += 1
           }
         }
         for (i <- 0 until batch.numCols) {
-          convert(mapping, batch.column(i).asInstanceOf[WritableColumnVector])
+          convert(mapping, curIndex, batch.column(i).asInstanceOf[WritableColumnVector])
         }
         batch.setNumRows(mapping.length)
         batch
@@ -72,10 +74,10 @@ private[spark] class BucketingRepartitionRDD(
     row => projection(row).getInt(0)
   }
 
-  private def convert(mapping: Seq[Int], col: WritableColumnVector): Unit = {
+  private def convert(mapping: Array[Int], mappingLength: Int, col: WritableColumnVector): Unit = {
     col.dataType match {
       case _: BooleanType =>
-        for (i <- 0 until mapping.length) {
+        for (i <- 0 until mappingLength) {
           if (col.isNullAt(mapping(i))) {
             col.putNull(i)
           } else {
@@ -83,7 +85,7 @@ private[spark] class BucketingRepartitionRDD(
           }
         }
       case _: ByteType =>
-        for (i <- 0 until mapping.length) {
+        for (i <- 0 until mappingLength) {
           if (col.isNullAt(mapping(i))) {
             col.putNull(i)
           } else {
@@ -91,7 +93,7 @@ private[spark] class BucketingRepartitionRDD(
           }
         }
       case _: ShortType =>
-        for (i <- 0 until mapping.length) {
+        for (i <- 0 until mappingLength) {
           if (col.isNullAt(mapping(i))) {
             col.putNull(i)
           } else {
@@ -99,7 +101,7 @@ private[spark] class BucketingRepartitionRDD(
           }
         }
       case _: IntegerType =>
-        for (i <- 0 until mapping.length) {
+        for (i <- 0 until mappingLength) {
           if (col.isNullAt(mapping(i))) {
             col.putNull(i)
           } else {
@@ -107,7 +109,7 @@ private[spark] class BucketingRepartitionRDD(
           }
         }
       case _: LongType =>
-        for (i <- 0 until mapping.length) {
+        for (i <- 0 until mappingLength) {
           if (col.isNullAt(mapping(i))) {
             col.putNull(i)
           } else {
@@ -123,7 +125,7 @@ private[spark] class BucketingRepartitionRDD(
           }
         }
       case _: DoubleType =>
-        for (i <- 0 until mapping.length) {
+        for (i <- 0 until mappingLength) {
           if (col.isNullAt(mapping(i))) {
             col.putNull(i)
           } else {
@@ -131,7 +133,7 @@ private[spark] class BucketingRepartitionRDD(
           }
         }
       case _: StringType =>
-        for (i <- 0 until mapping.length) {
+        for (i <- 0 until mappingLength) {
           if (col.isNullAt(mapping(i))) {
             col.putNull(i)
           } else {
@@ -139,7 +141,7 @@ private[spark] class BucketingRepartitionRDD(
           }
         }
       case _: BinaryType =>
-        for (i <- 0 until mapping.length) {
+        for (i <- 0 until mappingLength) {
           if (col.isNullAt(mapping(i))) {
             col.putNull(i)
           } else {
@@ -148,7 +150,7 @@ private[spark] class BucketingRepartitionRDD(
         }
       case dt: DecimalType =>
         if (dt.precision <= Decimal.MAX_INT_DIGITS) {
-          for (i <- 0 until mapping.length) {
+          for (i <- 0 until mappingLength) {
             if (col.isNullAt(mapping(i))) {
               col.putNull(i)
             } else {
@@ -156,7 +158,7 @@ private[spark] class BucketingRepartitionRDD(
             }
           }
         } else if (dt.precision <= Decimal.MAX_LONG_DIGITS) {
-          for (i <- 0 until mapping.length) {
+          for (i <- 0 until mappingLength) {
             if (col.isNullAt(mapping(i))) {
               col.putNull(i)
             } else {
@@ -164,7 +166,7 @@ private[spark] class BucketingRepartitionRDD(
             }
           }
         } else {
-          for (i <- 0 until mapping.length) {
+          for (i <- 0 until mappingLength) {
             if (col.isNullAt(mapping(i))) {
               col.putNull(i)
             } else {
@@ -175,7 +177,7 @@ private[spark] class BucketingRepartitionRDD(
       case _: CalendarIntervalType =>
         val months = col.getChild(0)
         val microseconds = col.getChild(1)
-        for (i <- 0 until mapping.length) {
+        for (i <- 0 until mappingLength) {
           if (col.isNullAt(mapping(i))) {
             col.putNull(i)
           } else {
@@ -184,7 +186,7 @@ private[spark] class BucketingRepartitionRDD(
           }
         }
       case _: DateType =>
-        for (i <- 0 until mapping.length) {
+        for (i <- 0 until mappingLength) {
           if (col.isNullAt(mapping(i))) {
             col.putNull(i)
           } else {
@@ -192,7 +194,7 @@ private[spark] class BucketingRepartitionRDD(
           }
         }
       case _: TimestampType =>
-        for (i <- 0 until mapping.length) {
+        for (i <- 0 until mappingLength) {
           if (col.isNullAt(mapping(i))) {
             col.putNull(i)
           } else {
