@@ -319,7 +319,7 @@ case class FileSourceScanExec(
           files.map(_.getPath.getName).groupBy(file => BucketingUtils.getBucketId(file))
         val singleFilePartitions = bucketToFilesGrouping.forall(p => p._2.length <= 1)
 
-        // TODO: Currently, sort order on bucket coalescing is not supported.
+        // TODO: Currently, sort order is ignored for bucket coalescing.
         if (singleFilePartitions && !isBucketCoalescing) {
           // TODO Currently Spark does not support writing columns sorting in descending order
           // so using Ascending order. This can be fixed in future
@@ -565,10 +565,12 @@ case class FileSourceScanExec(
         driverMetrics("filesSize") = filesSize
         ret
       } else {
-        // TODO: Implement coalescing.
-        assert(false)
-        Seq.tabulate(bucketSpec.numBuckets) { bucketId =>
-          FilePartition(bucketId, prunedFilesGroupedToBuckets.getOrElse(bucketId, Array.empty))
+        val coalescedBuckets = prunedFilesGroupedToBuckets.groupBy(_._1 % numParallelism)
+        Seq.tabulate(numParallelism) { bucketId =>
+          val partitionedFiles = coalescedBuckets.get(bucketId).map {
+            _.values.flatten.toArray
+          }.getOrElse(Array.empty)
+          FilePartition(bucketId, partitionedFiles)
         }
       }
     } else {

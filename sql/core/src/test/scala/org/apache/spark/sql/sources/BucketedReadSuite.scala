@@ -634,13 +634,30 @@ abstract class BucketedReadSuite extends QueryTest with SQLTestUtils {
     }
   }
 
-  test("terry2") {
+  test("dynamic bucket repartition without shuffle") {
     withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "0",
       SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "true") {
       spark.conf.set("spark.sql.bucketing.enable", "true")
       spark.conf.set("spark.sql.bucketing.repartition", "true")
       val df1 = (0 until 20).map(i => (i % 5, i % 13, i.toString)).toDF("i", "j", "k").as("df1")
       val df2 = (0 until 20).map(i => (i % 7, i % 11, i.toString)).toDF("i", "j", "k").as("df2")
+      df1.repartition(1).write.format("parquet").bucketBy(4, "i").sortBy("i").saveAsTable("t1")
+      df2.repartition(1).write.format("parquet").bucketBy(2, "i").sortBy("i").saveAsTable("t2")
+      val t1 = spark.table("t1")
+      val t2 = spark.table("t2")
+      val joined = t1.join(t2, t1("i") === t2("i"))
+      joined.explain
+      joined.show
+    }
+  }
+
+  test("dynamic bucket coalescing without shuffle") {
+    withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "0",
+      SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "true") {
+      spark.conf.set("spark.sql.bucketing.enable", "true")
+      spark.conf.set("spark.sql.bucketing.coalesce", "true")
+      val df1 = (0 until 1000).map(i => (i, i % 13, i.toString)).toDF("i", "j", "k").as("df1")
+      val df2 = (0 until 1000).map(i => (i, i % 11, i.toString)).toDF("i", "j", "k").as("df2")
       df1.repartition(1).write.format("parquet").bucketBy(4, "i").sortBy("i").saveAsTable("t1")
       df2.repartition(1).write.format("parquet").bucketBy(2, "i").sortBy("i").saveAsTable("t2")
       val t1 = spark.table("t1")
