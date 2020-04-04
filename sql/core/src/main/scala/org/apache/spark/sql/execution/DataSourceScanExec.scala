@@ -32,9 +32,9 @@ import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.catalyst.plans.physical.{HashPartitioning, Partitioning, UnknownPartitioning}
 import org.apache.spark.sql.catalyst.util.truncatedString
+import org.apache.spark.sql.execution.bucketing.InjectBucketHint
 import org.apache.spark.sql.execution.datasources._
 import org.apache.spark.sql.execution.datasources.parquet.{ParquetFileFormat => ParquetSource}
-import org.apache.spark.sql.execution.dynamicbucketing.BucketingRepartitionRDD
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.sources.{BaseRelation, Filter}
@@ -268,12 +268,21 @@ case class FileSourceScanExec(
     }
   }
 
-  private lazy val (isBucketCoalescing, isBucketRepartition): (Boolean, Boolean) = {
-    relation.bucketSpec.map { spec =>
-      spec.numParallelism.map { numParallelism =>
-        (numParallelism < spec.numBuckets, numParallelism > spec.numBuckets)
-      }.getOrElse((false, false))
-    }.getOrElse((false, false))
+  private lazy val coalescedNumBuckets: Option[Int] = {
+    if (SQLConf.get.getConf(SQLConf.BUCKETING_COALESCE_ENABLED)) {
+      val coalesced = relation.options.get(InjectBucketHint.JOIN_HINT_NUM_BUCKETS)
+      if (coalesced.isDefined &&
+        relation.bucketSpec.isDefined &&
+        coalesced.get.toInt < relation.bucketSpec.get.numBuckets &&
+        relation.bucketSpec.get.numBuckets % coalesced.get.toInt == 0) {
+        Some(coalesced.get.toInt)
+      }
+      else {
+        None
+      }
+    } else {
+      None
+    }
   }
 
   override lazy val (outputPartitioning, outputOrdering): (Partitioning, Seq[SortOrder]) = {
@@ -298,7 +307,7 @@ case class FileSourceScanExec(
       // above
       val spec = relation.bucketSpec.get
       val bucketColumns = spec.bucketColumnNames.flatMap(n => toAttribute(n))
-      val numPartitions = spec.numParallelism.getOrElse(spec.numBuckets)
+      val numPartitions = coalescedNumBuckets.getOrElse(spec.numBuckets)
       val partitioning = HashPartitioning(bucketColumns, numPartitions)
       val sortColumns =
         spec.sortColumnNames.map(x => toAttribute(x)).takeWhile(x => x.isDefined).map(_.get)
@@ -319,8 +328,8 @@ case class FileSourceScanExec(
           files.map(_.getPath.getName).groupBy(file => BucketingUtils.getBucketId(file))
         val singleFilePartitions = bucketToFilesGrouping.forall(p => p._2.length <= 1)
 
-        // TODO: Currently, sort order is ignored for bucket coalescing.
-        if (singleFilePartitions && !isBucketCoalescing) {
+        // TODO Sort order is currently ignored if buckets are coalesced.
+        if (singleFilePartitions && coalescedNumBuckets.isEmpty) {
           // TODO Currently Spark does not support writing columns sorting in descending order
           // so using Ascending order. This can be fixed in future
           sortColumns.map(attribute => SortOrder(attribute, Ascending))
@@ -549,29 +558,16 @@ case class FileSourceScanExec(
       filesGroupedToBuckets
     }
 
-    val filePartitions = if (bucketSpec.numParallelism.isDefined) {
-      val numParallelism = bucketSpec.numParallelism.get
-      assert(numParallelism != bucketSpec.numBuckets)
-      if (numParallelism > bucketSpec.numBuckets) {
-        val ret = Seq.tabulate(numParallelism) { bucketId =>
-          FilePartition(
-            bucketId,
-            prunedFilesGroupedToBuckets.getOrElse(bucketId % bucketSpec.numBuckets, Array.empty))
-        }
-        // There will be more files read.
-        val filesNum = ret.map(_.files.size.toLong).sum
-        val filesSize = ret.map(_.files.map(_.length).sum).sum
-        driverMetrics("numFiles") = filesNum
-        driverMetrics("filesSize") = filesSize
-        ret
-      } else {
-        val coalescedBuckets = prunedFilesGroupedToBuckets.groupBy(_._1 % numParallelism)
-        Seq.tabulate(numParallelism) { bucketId =>
-          val partitionedFiles = coalescedBuckets.get(bucketId).map {
-            _.values.flatten.toArray
-          }.getOrElse(Array.empty)
-          FilePartition(bucketId, partitionedFiles)
-        }
+    val filePartitions = if (coalescedNumBuckets.isDefined) {
+      val newNumBuckets = coalescedNumBuckets.get
+      logInfo(s"Coalescing to ${newNumBuckets} buckets")
+      val coalescedBuckets = prunedFilesGroupedToBuckets.groupBy(_._1 % newNumBuckets)
+      Seq.tabulate(newNumBuckets) { bucketId =>
+        val partitionedFiles = coalescedBuckets.get(bucketId).map {
+          _.values.flatten.toArray
+        }.getOrElse(Array.empty)
+
+        FilePartition(bucketId, partitionedFiles)
       }
     } else {
       Seq.tabulate(bucketSpec.numBuckets) { bucketId =>
@@ -579,12 +575,7 @@ case class FileSourceScanExec(
       }
     }
 
-    if (isBucketRepartition) {
-      new BucketingRepartitionRDD(
-        fsRelation.sparkSession, readFile, filePartitions, bucketSpec, output)
-    } else {
-      new FileScanRDD(fsRelation.sparkSession, readFile, filePartitions)
-    }
+    new FileScanRDD(fsRelation.sparkSession, readFile, filePartitions)
   }
 
   /**

@@ -160,12 +160,20 @@ abstract class TreeNode[BaseType <: TreeNode[BaseType]] extends Product {
   }
 
   /**
-   * Runs the given function on this node and then recursively on [[children]].
+   * Tests whether a predicate holds for all nodes.
+   * @param p the predicate function to be applied to each node in the tree.
+   */
+  def foreach(p: BaseType => Unit): Unit = {
+    p(this)
+    children.foreach(_.foreach(p))
+  }
+
+  /**
+   * Return the given function on this node and then recursively on [[children]].
    * @param f the function to be applied to each node in the tree.
    */
-  def foreach(f: BaseType => Unit): Unit = {
-    f(this)
-    children.foreach(_.foreach(f))
+  def forall(f: BaseType => Boolean): Boolean = {
+    f(this) && children.forall(_.forall(f))
   }
 
   /**

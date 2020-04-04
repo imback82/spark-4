@@ -2563,6 +2563,14 @@ object SQLConf {
       .booleanConf
       .createWithDefault(false)
 
+  val BUCKETING_COALESCE_ENABLED =
+    buildConf("spark.sql.bucketing.coalesce")
+      .internal()
+      .doc("")
+      .version("3.1.0")
+      .booleanConf
+      .createWithDefault(false)
+
   /**
    * Holds information about keys that have been deprecated.
    *
