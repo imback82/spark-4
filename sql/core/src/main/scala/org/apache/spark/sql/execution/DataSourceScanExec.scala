@@ -315,7 +315,7 @@ case class FileSourceScanExec(
         val singleFilePartitions = bucketToFilesGrouping.forall(p => p._2.length <= 1)
 
         // TODO SPARK-24528 Sort order is currently ignored if buckets are coalesced.
-        if (singleFilePartitions && optionalNumCoalescedBuckets.isEmpty) {
+        if (optionalNumCoalescedBuckets.isEmpty) {
           // TODO Currently Spark does not support writing columns sorting in descending order
           // so using Ascending order. This can be fixed in future
           sortColumns.map(attribute => SortOrder(attribute, Ascending))
@@ -564,7 +564,9 @@ case class FileSourceScanExec(
       }
     }
 
-    new FileScanRDD(fsRelation.sparkSession, readFile, filePartitions)
+    new BucketedFileScanRDD(
+      fsRelation.sparkSession, readFile, filePartitions, outputOrdering, output)
+    // new FileScanRDD(fsRelation.sparkSession, readFile, filePartitions)
   }
 
   /**

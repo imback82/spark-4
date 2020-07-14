@@ -901,6 +901,19 @@ abstract class BucketedReadSuite extends QueryTest with SQLTestUtils {
     }
   }
 
+  test("terry") {
+    withTable("one_bucket") {
+      withSQLConf(SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "false") {
+        val df = (0 until 6).map(i => (i, i % 11, i.toString)).toDF("i", "j", "k")
+        df.write.format("csv").bucketBy(1, "i").sortBy("i").saveAsTable("one_bucket")
+        val t = spark.table("one_bucket")
+        t.explain
+        // scalastyle:off println
+        t.select("i").foreach(r => println(r))
+      }
+    }
+  }
+
   test("bucket coalescing is not satisfied") {
     def run(testSpec1: BucketedTableTestSpec, testSpec2: BucketedTableTestSpec): Unit = {
       Seq((testSpec1, testSpec2), (testSpec2, testSpec1)).foreach { specs =>
