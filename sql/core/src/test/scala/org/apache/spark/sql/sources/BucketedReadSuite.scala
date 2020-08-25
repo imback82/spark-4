@@ -982,4 +982,27 @@ abstract class BucketedReadSuite extends QueryTest with SQLTestUtils {
       }
     }
   }
+
+  test("terry") {
+    withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "0",
+      SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "false") {
+      withTable("t1", "t2", "t3") {
+        val df1 = (0 until 100).map(i => (i % 5, i % 13, i.toString)).toDF("i1", "j1", "k1")
+        val df2 = (0 until 100).map(i => (i % 7, i % 11, i.toString)).toDF("i1", "j1", "k1")
+        val df3 = (0 until 100).map(i => (i % 5, i % 13, i.toString)).toDF("i3", "j3", "k3")
+        df1.write.format("parquet").bucketBy(8, "i1").saveAsTable("t1")
+        df2.write.format("parquet").bucketBy(8, "i1").saveAsTable("t2")
+        df3.write.format("parquet").bucketBy(8, "i3").saveAsTable("t3")
+
+        val t1 = spark.table("t1")
+        val t2 = spark.table("t2")
+        val t3 = spark.table("t3")
+
+        val union = t1.unionByName(t2)
+        val joined = union.join(t3, union("i1") === t3("i3"))
+
+        joined.show
+      }
+    }
+  }
 }

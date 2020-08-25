@@ -21,7 +21,7 @@ import java.io.{FileNotFoundException, IOException}
 
 import org.apache.parquet.io.ParquetDecodingException
 
-import org.apache.spark.{Partition => RDDPartition, SparkUpgradeException, TaskContext}
+import org.apache.spark.{Partition => RDDPartition, Partitioner, SparkUpgradeException, TaskContext}
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.rdd.{InputFileBlockHolder, RDD}
 import org.apache.spark.sql.SparkSession
@@ -57,7 +57,8 @@ case class PartitionedFile(
 class FileScanRDD(
     @transient private val sparkSession: SparkSession,
     readFunction: (PartitionedFile) => Iterator[InternalRow],
-    @transient val filePartitions: Seq[FilePartition])
+    @transient val filePartitions: Seq[FilePartition],
+    override val partitioner: Option[Partitioner] = None)
   extends RDD[InternalRow](sparkSession.sparkContext, Nil) {
 
   private val ignoreCorruptFiles = sparkSession.sessionState.conf.ignoreCorruptFiles

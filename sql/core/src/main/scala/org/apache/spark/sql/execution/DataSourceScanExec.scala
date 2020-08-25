@@ -24,6 +24,7 @@ import scala.collection.mutable.HashMap
 import org.apache.commons.lang3.StringUtils
 import org.apache.hadoop.fs.Path
 
+import org.apache.spark.Partitioner
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.{InternalRow, TableIdentifier}
@@ -562,7 +563,13 @@ case class FileSourceScanExec(
       }
     }
 
-    new FileScanRDD(fsRelation.sparkSession, readFile, filePartitions)
+    val part = new Partitioner {
+      override def numPartitions: Int = bucketSpec.numBuckets
+      // For HashPartitioning, the partitioning key is already a valid partition ID, as we use
+      // `HashPartitioning.partitionIdExpression` to produce partitioning key.
+      override def getPartition(key: Any): Int = key.asInstanceOf[Int]
+    }
+    new FileScanRDD(fsRelation.sparkSession, readFile, filePartitions, Some(part))
   }
 
   /**
