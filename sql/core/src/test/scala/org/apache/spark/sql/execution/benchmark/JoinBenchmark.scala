@@ -20,6 +20,8 @@ package org.apache.spark.sql.execution.benchmark
 import org.scalatest.Assertions._
 
 import org.apache.spark.benchmark.Benchmark
+import org.apache.spark.internal.config.UI.UI_ENABLED
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.execution.joins._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.internal.SQLConf
@@ -38,6 +40,15 @@ import org.apache.spark.sql.types.IntegerType
  * }}}
  */
 object JoinBenchmark extends SqlBasedBenchmark {
+
+  override def getSparkSession: SparkSession = {
+//    SparkSession.builder()
+//      .master("local[4]")
+//      .appName(this.getClass.getCanonicalName)
+//      .config(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key, 1)
+//      .config(UI_ENABLED.key, false)
+//      .getOrCreate()
+//  }
 
   def broadcastHashJoinLongKey(): Unit = {
     val N = 20 << 20
@@ -168,15 +179,16 @@ object JoinBenchmark extends SqlBasedBenchmark {
   }
 
   def sortMergeJoinWithRepartition(): Unit = {
-    val N = 2 << 26
+    val N = 2 << 25
     val df1 = spark.range(N).selectExpr(s"id * 2 as k1")
     val df2 = spark.range(N).selectExpr(s"id * 3 as k2")
-    df1.write.format("parquet").bucketBy(8, "k1").saveAsTable("t1")
-    df2.write.format("parquet").bucketBy(4, "k2").saveAsTable("t2")
+    df1.repartition(16, df1("k1")).write.format("parquet").bucketBy(16, "k1").saveAsTable("t1")
+    df2.repartition(8, df2("k2")).write.format("parquet").bucketBy(8, "k2").saveAsTable("t2")
 
+    val iteration = 2
     val benchmark = new Benchmark("Repartion bucket", N, output = output)
 
-    benchmark.addCase("repartition off", 3) { _ =>
+    benchmark.addCase("repartition off", iteration) { _ =>
       withSQLConf(SQLConf.BUCKET_READ_STRATEGY_IN_JOIN.key -> "OFF") {
         val t1 = spark.table("t1")
         val t2 = spark.table("t2")
@@ -186,7 +198,7 @@ object JoinBenchmark extends SqlBasedBenchmark {
       }
     }
 
-    benchmark.addCase("repartition on", 3) { _ =>
+    benchmark.addCase("repartition on", iteration) { _ =>
       withSQLConf(SQLConf.BUCKET_READ_STRATEGY_IN_JOIN.key -> "REPARTITION") {
         val t1 = spark.table("t1")
         val t2 = spark.table("t2")
@@ -195,6 +207,16 @@ object JoinBenchmark extends SqlBasedBenchmark {
         df.noop()
       }
     }
+
+//    benchmark.addCase("coalesce on", iteration) { _ =>
+//      withSQLConf(SQLConf.BUCKET_READ_STRATEGY_IN_JOIN.key -> "COALESCE") {
+//        val t1 = spark.table("t1")
+//        val t2 = spark.table("t2")
+//        val df = t1.join(t2, col("k1") === col("k2"))
+//        assert(df.queryExecution.sparkPlan.find(_.isInstanceOf[SortMergeJoinExec]).isDefined)
+//        df.noop()
+//      }
+//    }
 
     benchmark.run()
 
