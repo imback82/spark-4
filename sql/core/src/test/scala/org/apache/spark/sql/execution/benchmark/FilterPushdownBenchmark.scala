@@ -120,12 +120,25 @@ object FilterPushdownBenchmark extends SqlBasedBenchmark {
           spark.sql(s"SELECT $selectExpr FROM parquetTable WHERE $whereExpr").noop()
         }
       }
+
+      benchmark.addCase(name + " with columnar filter") { _ =>
+        withSQLConf(SQLConf.PARQUET_FILTER_PUSHDOWN_ENABLED.key -> s"$pushDownEnabled",
+          SQLConf.COLUMNAR_IN_FILTER_EXEC_ENABLED.key -> "true") {
+          spark.sql(s"SELECT $selectExpr FROM parquetTable WHERE $whereExpr").noop()
+        }
+      }
     }
 
     Seq(false, true).foreach { pushDownEnabled =>
       val name = s"Native ORC Vectorized ${if (pushDownEnabled) s"(Pushdown)" else ""}"
       benchmark.addCase(name) { _ =>
         withSQLConf(SQLConf.ORC_FILTER_PUSHDOWN_ENABLED.key -> s"$pushDownEnabled") {
+          spark.sql(s"SELECT $selectExpr FROM orcTable WHERE $whereExpr").noop()
+        }
+      }
+      benchmark.addCase(name + " with columnar filter") { _ =>
+        withSQLConf(SQLConf.ORC_FILTER_PUSHDOWN_ENABLED.key -> s"$pushDownEnabled",
+          SQLConf.COLUMNAR_IN_FILTER_EXEC_ENABLED.key -> "true") {
           spark.sql(s"SELECT $selectExpr FROM orcTable WHERE $whereExpr").noop()
         }
       }

@@ -711,6 +711,29 @@ class DataSourceV2SQLSuite
     assert(catalog("testcat").asTableCatalog.tableExists(ident) === false)
   }
 
+  test("terry") {
+    sql(s"CREATE TABLE testcat.ns.t USING csv AS SELECT 1 as id")
+    sql("CREATE TEMPORARY VIEW t AS SELECT 2 AS i")
+    sql("USE testcat.ns")
+    sql("SELECT * FROM t").show
+    sql("SELECT * FROM testcat.ns.t").show
+    sql("SHOW TABLES").show
+    sql("DROP TABLE t")
+    sql("SHOW TABLES").show
+    sql("SHOW TABLES FROM spark_catalog.default").show
+  }
+
+  test("terry2") {
+    sql(s"CREATE TABLE t USING csv AS SELECT 1 as id")
+    // sql("CREATE TEMPORARY VIEW t AS SELECT 2 AS i")
+    sql("SELECT * FROM default.t").show
+    sql("SELECT * FROM t").show
+    sql("SHOW TABLES").show
+    sql("DROP TABLE t")
+    sql("SELECT * FROM t").show
+    sql("SHOW TABLES").show
+  }
+
   test("DropTable: table qualified with the session catalog name") {
     val ident = Identifier.of(Array("default"), "tbl")
     sql("CREATE TABLE tbl USING json AS SELECT 1 AS i")

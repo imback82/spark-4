@@ -2275,6 +2275,14 @@ object SQLConf {
       .booleanConf
       .createWithDefault(false)
 
+  val COLUMNAR_IN_FILTER_EXEC_ENABLED =
+    buildConf("spark.sql.columnar.filter.enabled")
+      .internal()
+      .doc("")
+      .version("3.1.0")
+      .booleanConf
+      .createWithDefault(false)
+
   val LEGACY_ALLOW_NEGATIVE_SCALE_OF_DECIMAL_ENABLED =
     buildConf("spark.sql.legacy.allowNegativeScaleOfDecimal")
       .internal()
@@ -3368,6 +3376,9 @@ class SQLConf extends Serializable with Logging {
 
   def coalesceBucketsInJoinMaxBucketRatio: Int =
     getConf(SQLConf.COALESCE_BUCKETS_IN_JOIN_MAX_BUCKET_RATIO)
+
+  def columnarInFilterExecEnabled: Boolean =
+    getConf(SQLConf.COLUMNAR_IN_FILTER_EXEC_ENABLED)
 
   def optimizeNullAwareAntiJoin: Boolean =
     getConf(SQLConf.OPTIMIZE_NULL_AWARE_ANTI_JOIN)

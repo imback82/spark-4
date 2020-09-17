@@ -20,8 +20,10 @@ package org.apache.spark.sql.execution
 import java.util.concurrent.{Future => JFuture}
 import java.util.concurrent.TimeUnit._
 
+import scala.collection.JavaConverters._
 import scala.collection.mutable
-import scala.concurrent.{ExecutionContext}
+import scala.collection.mutable.ArrayBuffer
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.Duration
 
 import org.apache.spark.{InterruptibleIterator, Partition, SparkContext, TaskContext}
@@ -31,9 +33,11 @@ import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.BindReferences.bindReferences
 import org.apache.spark.sql.catalyst.expressions.codegen._
 import org.apache.spark.sql.catalyst.plans.physical._
+import org.apache.spark.sql.execution.columnar.MappedColumnVector
 import org.apache.spark.sql.execution.metric.SQLMetrics
 import org.apache.spark.sql.internal.{SQLConf, StaticSQLConf}
 import org.apache.spark.sql.types.{LongType, StructType}
+import org.apache.spark.sql.vectorized.{ColumnarBatch, ColumnVector}
 import org.apache.spark.util.{ThreadUtils, Utils}
 import org.apache.spark.util.random.{BernoulliCellSampler, PoissonSampler}
 
@@ -127,6 +131,11 @@ case class FilterExec(condition: Expression, child: SparkPlan)
         a
       }
     }
+  }
+
+  override lazy val supportsColumnar: Boolean = {
+    SQLConf.get.getConf(SQLConf.COLUMNAR_IN_FILTER_EXEC_ENABLED) &&
+      child.supportsColumnar
   }
 
   override lazy val metrics = Map(
@@ -236,6 +245,34 @@ case class FilterExec(condition: Expression, child: SparkPlan)
         val r = predicate.eval(row)
         if (r) numOutputRows += 1
         r
+      }
+    }
+  }
+
+  protected override def doExecuteColumnar(): RDD[ColumnarBatch] = {
+    // scalastyle:off println
+    println("doExecuteColumnar")
+    // scalastyle:on println
+    val numOutputRows = longMetric("numOutputRows")
+    child.executeColumnar().mapPartitionsWithIndexInternal { (index, iter) =>
+      val predicate = Predicate.create(condition, child.output)
+      predicate.initialize(0)
+      val mapping = new ArrayBuffer[Int]()
+      val columns = new ArrayBuffer[ColumnVector]()
+      iter.map { batch =>
+        mapping.clear
+        batch.rowIterator.asScala.zipWithIndex.foreach { case (row, i) =>
+          val r = predicate.eval(row)
+          if (r) {
+            mapping += i
+            numOutputRows += 1
+          }
+        }
+        columns.clear
+        (0 until batch.numCols).map { i =>
+          columns += MappedColumnVector(batch.column(i), mapping)
+        }
+        new ColumnarBatch(columns.toArray, mapping.length)
       }
     }
   }

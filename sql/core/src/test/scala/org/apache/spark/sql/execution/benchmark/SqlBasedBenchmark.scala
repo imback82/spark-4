@@ -46,6 +46,13 @@ trait SqlBasedBenchmark extends BenchmarkBase with SQLHelper {
   final def codegenBenchmark(name: String, cardinality: Long)(f: => Unit): Unit = {
     val benchmark = new Benchmark(name, cardinality, output = output)
 
+    benchmark.addCase(s"$name wholestage off and columnar", numIters = 2) { _ =>
+      withSQLConf(SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "false",
+        SQLConf.COLUMNAR_IN_FILTER_EXEC_ENABLED.key -> "true") {
+        f
+      }
+    }
+
     benchmark.addCase(s"$name wholestage off", numIters = 2) { _ =>
       withSQLConf(SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "false") {
         f
@@ -54,6 +61,13 @@ trait SqlBasedBenchmark extends BenchmarkBase with SQLHelper {
 
     benchmark.addCase(s"$name wholestage on", numIters = 5) { _ =>
       withSQLConf(SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "true") {
+        f
+      }
+    }
+
+    benchmark.addCase(s"$name wholestage on and columnar", numIters = 5) { _ =>
+      withSQLConf(SQLConf.WHOLESTAGE_CODEGEN_ENABLED.key -> "true",
+        SQLConf.COLUMNAR_IN_FILTER_EXEC_ENABLED.key -> "true") {
         f
       }
     }
