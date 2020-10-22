@@ -3193,7 +3193,7 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
       } else {
         DescribeColumn(
           UnresolvedTableOrView(visitMultipartIdentifier(ctx.multipartIdentifier())),
-          ctx.describeColName.nameParts.asScala.map(_.getText).toSeq,
+          UnresolvedAttribute(ctx.describeColName.nameParts.asScala.map(_.getText).toSeq),
           isExtended)
       }
     } else {

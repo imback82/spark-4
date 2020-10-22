@@ -756,7 +756,7 @@ case class DescribeQueryCommand(queryText: String, plan: LogicalPlan)
  */
 case class DescribeColumnCommand(
     table: TableIdentifier,
-    colNameParts: Seq[String],
+    field: Attribute,
     isExtended: Boolean)
   extends RunnableCommand {
 
@@ -767,16 +767,16 @@ case class DescribeColumnCommand(
     val resolver = sparkSession.sessionState.conf.resolver
     val relation = sparkSession.table(table).queryExecution.analyzed
 
-    val colName = UnresolvedAttribute(colNameParts).name
-    val field = {
-      relation.resolve(colNameParts, resolver).getOrElse {
-        throw new AnalysisException(s"Column $colName does not exist")
-      }
-    }
+//    val colName = UnresolvedAttribute(colNameParts).name
+//    val field = {
+//      relation.resolve(colNameParts, resolver).getOrElse {
+//        throw new AnalysisException(s"Column $colName does not exist")
+//      }
+//    }
     if (!field.isInstanceOf[Attribute]) {
       // If the field is not an attribute after `resolve`, then it's a nested field.
       throw new AnalysisException(
-        s"DESC TABLE COLUMN command does not support nested data types: $colName")
+        s"DESC TABLE COLUMN command does not support nested data types: ${field.name}")
     }
 
     val catalogTable = catalog.getTempViewOrPermanentTableMetadata(table)
