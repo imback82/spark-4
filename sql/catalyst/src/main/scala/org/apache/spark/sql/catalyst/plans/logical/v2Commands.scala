@@ -395,6 +395,15 @@ case class DropTable(
 }
 
 /**
+ * The logical plan of the DROP VIEW command.
+ */
+case class DropView(
+    child: LogicalPlan,
+    ifExists: Boolean) extends Command {
+  override def children: Seq[LogicalPlan] = child :: Nil
+}
+
+/**
  * The logical plan for handling non-existing table for DROP TABLE command.
  */
 case class NoopDropTable(multipartIdentifier: Seq[String]) extends Command

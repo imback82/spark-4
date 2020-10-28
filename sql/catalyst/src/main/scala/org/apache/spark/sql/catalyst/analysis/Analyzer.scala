@@ -865,6 +865,10 @@ class Analyzer(
           u.failAnalysis(s"${ident.quoted} is a temp view not table.")
         }
         u
+      case u @ UnresolvedView(ident) =>
+        lookupTempView(ident)
+          .map(_ => ResolvedView(ident.asIdentifier, isTemp = true))
+          .getOrElse(u)
       case u @ UnresolvedTableOrView(ident) =>
         lookupTempView(ident)
           .map(_ => ResolvedView(ident.asIdentifier, isTemp = true))

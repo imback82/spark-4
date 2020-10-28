@@ -2892,8 +2892,8 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    * Create a [[DropViewStatement]] command.
    */
   override def visitDropView(ctx: DropViewContext): AnyRef = withOrigin(ctx) {
-    DropViewStatement(
-      visitMultipartIdentifier(ctx.multipartIdentifier()),
+    DropView(
+      UnresolvedView(visitMultipartIdentifier(ctx.multipartIdentifier())),
       ctx.EXISTS != null)
   }
 
